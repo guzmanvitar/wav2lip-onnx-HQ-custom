@@ -137,10 +137,8 @@ def select_specific_face(model, spec_img, size, crop_scale=1.0):
 
     # select face:
 		h, w = spec_img.shape[:-1]
-		roi = cv2.selectROI("Select speaker face", spec_img, showCrosshair=False)
-		if roi == (0,0,0,0):roi = (0,0,w,h)
-		cropped_roi = spec_img[int(roi[1]):int(roi[1]+roi[3]), int(roi[0]):int(roi[0]+roi[2])]
-		cv2.destroyAllWindows()
+		roi = (0, 0, w, h)
+		cropped_roi = spec_img[roi[1]:roi[1]+roi[3], roi[0]:roi[0]+roi[2]]
 		
 		bboxes, kpss = model.detect(cropped_roi, input_size = (320,320), det_thresh=0.3)
 		assert len(kpss) != 0, "No face detected"
@@ -304,10 +302,8 @@ def main():
 
     # crop final:
 		h, w = orig_frame.shape[:-1]
-		roi = cv2.selectROI("Crop final video", orig_frame, showCrosshair=False)
-		if roi == (0,0,0,0):roi = (0,0,w,h)
-		cropped_roi = orig_frame[int(roi[1]):int(roi[1]+roi[3]), int(roi[0]):int(roi[0]+roi[2])]
-		cv2.destroyAllWindows()
+		roi = (0, 0, w, h)
+		cropped_roi = orig_frame[roi[1]:roi[1]+roi[3], roi[0]:roi[0]+roi[2]]
 		full_frames = [cropped_roi]
 		orig_h, orig_w = cropped_roi.shape[:-1]
 		
@@ -350,12 +346,8 @@ def main():
       # crop first frame:
 			if l == 0:
 				h, w = frame.shape[:-1]
-				roi = cv2.selectROI("Crop final video", frame, showCrosshair=False)
-				if roi == (0,0,0,0):roi = (0,0,w,h)
-								
-				cropped_roi = frame[int(roi[1]):int(roi[1]+roi[3]), int(roi[0]):int(roi[0]+roi[2])]
-				cv2.destroyAllWindows()
-				os.system('cls')
+				roi = (0, 0, w, h)
+				cropped_roi = frame[roi[1]:roi[1]+roi[3], roi[0]:roi[0]+roi[2]]
 				
         # select_specific_face:
 				target_id = select_specific_face(detector, cropped_roi, 256, crop_scale=1)
@@ -377,6 +369,7 @@ def main():
   
   # convert input audio to wav anyway:
 	print('Extracting raw audio...')
+	os.makedirs('temp', exist_ok=True)
 	subprocess.run(['ffmpeg', '-y', '-i', args.audio, '-ac', '1', '-strict', '-2', 'temp/temp.wav'])
 
 	os.system('cls')
@@ -588,12 +581,51 @@ def main():
 	out.release()
 
 	if args.hq_output:
-		 command = 'ffmpeg.exe -y -i ' + '"' + args.audio + '"' + ' -r ' + str(fps) + ' -f image2 -i ' + '"' + './hq_temp/' + '%07d.png' + '"' + ' -shortest -vcodec libx264 -pix_fmt yuv420p -crf 5 -preset slow -acodec libmp3lame -ac 2 -ar 44100 -ab 128000 -strict -2 ' + '"' + args.outfile + '"'
-	else:						
-		command = 'ffmpeg.exe -y -i ' + '"' + args.audio + '"' + ' -i ' + 'temp/temp.mp4' + ' -shortest -vcodec copy -acodec libmp3lame -ac 2 -ar 44100 -ab 128000 -strict -2 ' + '"' + args.outfile + '"'
+		command = [
+			"ffmpeg",
+			"-y",
+			"-i", args.audio,
+			"-r", str(fps),
+			"-f", "image2",
+			"-i", "./hq_temp/%07d.png",
+			"-shortest",
+			"-vcodec", "libx264",
+			"-pix_fmt", "yuv420p",
+			"-crf", "5",
+			"-preset", "slow",
+			"-acodec", "libmp3lame",
+			"-ac", "2",
+			"-ar", "44100",
+			"-ab", "128000",
+			"-strict", "-2",
+			args.outfile,
+		]
+	else:
+		command = [
+			"ffmpeg",
+			"-y",
+			"-i", args.audio,
+			"-i", "temp/temp.mp4",
+			"-shortest",
+			"-vcodec", "copy",
+			"-acodec", "libmp3lame",
+			"-ac", "2",
+			"-ar", "44100",
+			"-ab", "128000",
+			"-strict", "-2",
+			args.outfile,
+		]
 
-	subprocess.call(command, shell=platform.system() != 'Windows')
-		
+	try:
+		print("Running ffmpeg command:", " ".join(command))
+		result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		print("ffmpeg completed successfully.")
+	except subprocess.CalledProcessError as e:
+		print("ffmpeg failed:")
+		print("STDOUT:\n", e.stdout.decode())
+		print("STDERR:\n", e.stderr.decode())
+		raise
+			
 	if os.path.exists('temp/temp.mp4'):
 		os.remove('temp/temp.mp4')
 	if os.path.exists('temp/temp.wav'):
