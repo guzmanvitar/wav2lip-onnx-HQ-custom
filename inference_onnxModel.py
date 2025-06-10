@@ -78,8 +78,8 @@ mel_step_size = 16
 padY = max(-15, min(args.pads, 15))
 
 device = 'cpu'
-if onnxruntime.get_device() == 'GPU':
-		device = 'cuda'
+# if onnxruntime.get_device() == 'GPU':
+# 		device = 'cuda'
 print("Running on " + device)
 
 
