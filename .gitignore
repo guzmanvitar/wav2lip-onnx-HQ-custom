@@ -1,0 +1,38 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.egg
+*.egg-info
+*.whl
+*.db
+*.sqlite3
+*.log
+*.coverage
+*.mypy_cache
+*.pytest_cache
+*.vscode
+*.idea
+temp
+hq_temp
+# Environment variables
+.env
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+# Pytest cache
+.cache
+# PyCharm project files
+.idea/
+# VS Code settings
+.vscode/
+# Temporary files
+*.tmp
+# Backup files
+*~
+# Python bytecode files
+*.py[cod]
+# Distribution / packaging
+dist/
+build/
