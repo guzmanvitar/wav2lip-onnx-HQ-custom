@@ -4,3 +4,4 @@ checkpoints/wav2lip.onnx filter=lfs diff=lfs merge=lfs -text
 faceID/recognition.onnx filter=lfs diff=lfs merge=lfs -text
 resemble_denoiser/denoiser_fp16.onnx filter=lfs diff=lfs merge=lfs -text
 xseg/xseg.onnx filter=lfs diff=lfs merge=lfs -text
+enhancers/GFPGAN/GFPGANv1.4.onnx filter=lfs diff=lfs merge=lfs -text
