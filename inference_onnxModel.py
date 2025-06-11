@@ -149,88 +149,92 @@ def select_specific_face(model, spec_img, size, crop_scale=1.0):
 
 		return target_id
     
-def process_video_specific(model, img, size, target_id, crop_scale=1.0):
-		ori_img = img
-		bboxes, kpss = model.detect(ori_img, input_size=(320, 320), det_thresh=0.3)
+def estimate_yaw_pitch(kps):
+    # Assume kps = np.array with shape (5, 2), typical from RetinaFace
+    left_eye, right_eye, nose, left_mouth, right_mouth = kps
+    dx = right_eye[0] - left_eye[0]
+    dy = right_eye[1] - left_eye[1]
+    yaw = np.degrees(np.arctan2(dy, dx))
     
-		assert len(kpss) != 0, "No face detected"
+    # Rough vertical angle estimation
+    mid_eyes = (left_eye + right_eye) / 2
+    d_nose = nose[1] - mid_eyes[1]
+    pitch = np.degrees(np.arctan2(d_nose, dx))  # dx as approx distance for scale
+    
+    return yaw, pitch
 
-		best_score = -float('inf')
-		best_aimg = None
-		best_mat = None
+def process_video_specific(model, img, size, target_id, crop_scale=1.0):
+    ori_img = img
+    bboxes, kpss = model.detect(ori_img, input_size=(320, 320), det_thresh=0.3)
 
-		for kps in kpss:
-				aimg, mat = get_cropped_head_256(ori_img, kps, size=size, scale=crop_scale)
-        
-				face = aimg.copy()
-				face = cv2.resize(face, (112, 112))
-				face_id = recognition(face)[0].flatten()
-        
-        # Calculate similarity score with the target ID
-				score = target_id @ face_id  # Dot product or cosine similarity
-                
-				if score > best_score:
-						best_score = score
-						best_aimg = aimg
-						best_mat = mat
-				if best_score < 0.4:
-						best_aimg = np.zeros((256,256), dtype=np.uint8)
-						best_aimg = cv2.cvtColor(best_aimg, cv2.COLOR_GRAY2RGB)/255
-						best_mat = np.float32([[1,2,3],[1,2,3]])                          
+    assert len(kpss) != 0, "No face detected"
 
-		return best_aimg, best_mat
+    best_score = -float('inf')
+    best_aimg = None
+    best_mat = None
+
+    for kps in kpss:
+        yaw, pitch = estimate_yaw_pitch(kps)
+        if abs(yaw) > 60 or abs(pitch) >30:
+            continue  # skip faces with extreme pose
+
+        aimg, mat = get_cropped_head_256(ori_img, kps, size=size, scale=crop_scale)
+        face = aimg.copy()
+        face = cv2.resize(face, (112, 112))
+        face_id = recognition(face)[0].flatten()
+        score = target_id @ face_id
+
+        if score > best_score:
+            best_score = score
+            best_aimg = aimg
+            best_mat = mat
+
+    if best_score < 0.4 or best_aimg is None:
+        return None, None
+
+    return best_aimg, best_mat
         
 def face_detect(images, target_id):
+    print("Detecting face and generating data...")
 
-	os.system('cls')
-	print ("Detecting face and generating data...")
-					
-	crop_size = 256
+    sub_faces = []
+    crop_faces = []
+    matrix = []
+    face_error = []
 
-	sub_faces = []
-	crop_faces = []
-	matrix = []
-	face_error = []
-				
-	for i in tqdm(range(0, len(images))):
+    for i in tqdm(range(len(images))):
+        try:
+            crop_face, M = process_video_specific(detector, images[i], 256, target_id, crop_scale=1.0)
 
-		try:
+            if crop_face is None or M is None:
+                raise ValueError("Face too rotated or not found")
 
-			crop_face, M = process_video_specific(detector, images[i], 256, target_id, crop_scale=1.0)
+            if args.face_mode == 0:
+                sub_face = crop_face[65 - padY:241 - padY, 62:194]
+            else:
+                sub_face = crop_face[65 - padY:241 - padY, 42:214]
 
-      # crop modes
-			if args.face_mode == 0:
-				sub_face = crop_face[65-(padY):241-(padY),62:194]
-				#cv2.imwrite("sub_0.jpg",sub_face)
-			else:
-				sub_face = crop_face[65-(padY):241-(padY),42:214]
-				#cv2.imwrite("sub_1.jpg",sub_face)
-			
-			sub_face = cv2.resize(sub_face, (args.img_size,args.img_size))
-  
-			sub_faces.append(sub_face)		
-			crop_faces.append(crop_face)
-			matrix.append(M)
-  
-			no_face = 0
-  		
-		except:
-			if i == 0:
-				crop_face = np.zeros((256,256), dtype=np.uint8)
-				crop_face = cv2.cvtColor(crop_face, cv2.COLOR_GRAY2RGB)/255
-				sub_face = crop_face[65-(padY):241-(padY),62:194]
-				sub_face = cv2.resize(sub_face, (args.img_size,args.img_size))
-				M = np.float32([[1,2,3],[1,2,3]])
-  							
-			sub_faces.append(sub_face)		
-			crop_faces.append(crop_face)
-			matrix.append(M)
-  		
-			no_face = -1
-			
-		face_error.append(no_face)
-		
-	return crop_faces, sub_faces, matrix, face_error 
+            sub_face = cv2.resize(sub_face, (args.img_size, args.img_size))
+
+            sub_faces.append(sub_face)
+            crop_faces.append(crop_face)
+            matrix.append(M)
+            face_error.append(0)
+
+        except:
+            # fallback: use empty face, and mark as no-face
+            crop_face = np.zeros((256, 256), dtype=np.uint8)
+            crop_face = cv2.cvtColor(crop_face, cv2.COLOR_GRAY2RGB) / 255
+            sub_face = crop_face[65 - padY:241 - padY, 62:194]
+            sub_face = cv2.resize(sub_face, (args.img_size, args.img_size))
+            M = np.float32([[1, 0, 0], [0, 1, 0]])
+
+            sub_faces.append(sub_face)
+            crop_faces.append(crop_face)
+            matrix.append(M)
+            face_error.append(-1)
+
+    return crop_faces, sub_faces, matrix, face_error
 
 def datagen(frames, mels):
 	
