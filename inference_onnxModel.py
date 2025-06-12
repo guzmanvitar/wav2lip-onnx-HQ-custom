@@ -236,42 +236,23 @@ def load_model(device):
     return session
 
 
-def select_specific_face(model, frames, size, crop_scale=1.0):
-    for idx, frame in enumerate(frames):
-        if frame is None or frame.size == 0:
-            print(f"[WARN] Skipping empty frame at index {idx}")
-            continue
+def select_specific_face(model, spec_img, size, crop_scale=1.0):
 
-        h, w = frame.shape[:2]
-        if h == 0 or w == 0:
-            print(f"[WARN] Skipping frame with invalid dimensions at index {idx}")
-            continue
+    # select face:
+    h, w = spec_img.shape[:-1]
+    roi = (0, 0, w, h)
+    cropped_roi = spec_img[roi[1] : roi[1] + roi[3], roi[0] : roi[0] + roi[2]]
 
-        roi = (0, 0, w, h)
-        cropped_roi = frame[roi[1] : roi[1] + roi[3], roi[0] : roi[0] + roi[2]]
+    bboxes, kpss = model.detect(cropped_roi, input_size=(320, 320), det_thresh=0.3)
+    assert len(kpss) != 0, "No face detected"
 
-        if cropped_roi is None or cropped_roi.size == 0:
-            print(f"[WARN] Skipping empty cropped ROI at index {idx}")
-            continue
+    target_face, mat = get_cropped_head_256(
+        cropped_roi, kpss[0], size=size, scale=crop_scale
+    )
+    target_face = cv2.resize(target_face, (112, 112))
+    target_id = recognition(target_face)[0].flatten()
 
-        try:
-            bboxes, kpss = model.detect(
-                cropped_roi, input_size=(320, 320), det_thresh=0.3
-            )
-        except cv2.error as e:
-            print(f"[WARN] OpenCV error in detection at frame {idx}: {e}")
-            continue
-
-        if len(kpss) != 0:
-            target_face, mat = get_cropped_head_256(
-                cropped_roi, kpss[0], size=size, scale=crop_scale
-            )
-            target_face = cv2.resize(target_face, (112, 112))
-            target_id = recognition(target_face)[0].flatten()
-            print(f"[INFO] Face detected on frame {idx}")
-            return target_id
-
-    raise ValueError("No face detected in any of the valid frames.")
+    return target_id
 
 
 def fallback_passthrough_segment(video_path, audio_path, output_path):
@@ -287,23 +268,37 @@ def fallback_passthrough_segment(video_path, audio_path, output_path):
     # Define common FFmpeg flags (must match the rest of your pipeline)
     common_ffmpeg_flags = [
         "-shortest",
-        "-vcodec", "libx264",
-        "-pix_fmt", "yuv420p",
-        "-crf", "23",
-        "-preset", "veryfast",
-        "-acodec", "aac",
-        "-ac", "2",
-        "-ar", "44100",
-        "-b:a", "128k",
+        "-vcodec",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-crf",
+        "23",
+        "-preset",
+        "veryfast",
+        "-acodec",
+        "aac",
+        "-ac",
+        "2",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
     ]
 
     # Mux original video with new audio
-    command = [
-        "ffmpeg",
-        "-y",
-        "-i", video_path,
-        "-i", audio_path,
-    ] + common_ffmpeg_flags + [output_path]
+    command = (
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            video_path,
+            "-i",
+            audio_path,
+        ]
+        + common_ffmpeg_flags
+        + [output_path]
+    )
 
     try:
         subprocess.run(
@@ -555,13 +550,9 @@ def main():
                 h, w = frame.shape[:-1]
                 roi = (0, 0, w, h)
                 cropped_roi = frame[roi[1] : roi[1] + roi[3], roi[0] : roi[0] + roi[2]]
-                try:
-                    target_id = select_specific_face(
-                        detector, cropped_roi, 256, crop_scale=1
-                    )
-                except ValueError:
-                    fallback_passthrough_segment(args.face, args.audio, args.outfile)
-                    sys.exit(0)
+                target_id = select_specific_face(
+                    detector, cropped_roi, 256, crop_scale=1
+                )
                 orig_h, orig_w = cropped_roi.shape[:-1]
                 print("Reading frames....")
 
