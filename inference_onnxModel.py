@@ -1,6 +1,5 @@
-import os, sys
+import os
 import subprocess
-import platform
 import numpy as np
 import cv2
 import argparse
@@ -12,6 +11,7 @@ from tqdm import tqdm
 from PIL import Image
 from scipy.io.wavfile import write
 import gc
+import sys
 
 import onnxruntime
 onnxruntime.set_default_logger_severity(3)
@@ -133,21 +133,79 @@ def load_model(device):
 	return session
 
 
-def select_specific_face(model, spec_img, size, crop_scale=1.0):
+def select_specific_face(model, frames, size, crop_scale=1.0):
+    for idx, frame in enumerate(frames):
+        if frame is None or frame.size == 0:
+            print(f"[WARN] Skipping empty frame at index {idx}")
+            continue
 
-    # select face:
-		h, w = spec_img.shape[:-1]
-		roi = (0, 0, w, h)
-		cropped_roi = spec_img[roi[1]:roi[1]+roi[3], roi[0]:roi[0]+roi[2]]
-		
-		bboxes, kpss = model.detect(cropped_roi, input_size = (320,320), det_thresh=0.3)
-		assert len(kpss) != 0, "No face detected"
-		
-		target_face, mat = get_cropped_head_256(cropped_roi, kpss[0], size=size, scale=crop_scale)
-		target_face = cv2.resize(target_face,(112,112))
-		target_id = recognition(target_face)[0].flatten()
+        h, w = frame.shape[:2]
+        if h == 0 or w == 0:
+            print(f"[WARN] Skipping frame with invalid dimensions at index {idx}")
+            continue
 
-		return target_id
+        roi = (0, 0, w, h)
+        cropped_roi = frame[roi[1]:roi[1]+roi[3], roi[0]:roi[0]+roi[2]]
+
+        if cropped_roi is None or cropped_roi.size == 0:
+            print(f"[WARN] Skipping empty cropped ROI at index {idx}")
+            continue
+
+        try:
+            bboxes, kpss = model.detect(cropped_roi, input_size=(320, 320), det_thresh=0.3)
+        except cv2.error as e:
+            print(f"[WARN] OpenCV error in detection at frame {idx}: {e}")
+            continue
+
+        if len(kpss) != 0:
+            target_face, mat = get_cropped_head_256(cropped_roi, kpss[0], size=size, scale=crop_scale)
+            target_face = cv2.resize(target_face, (112, 112))
+            target_id = recognition(target_face)[0].flatten()
+            print(f"[INFO] Face detected on frame {idx}")
+            return target_id
+
+    raise ValueError("No face detected in any of the valid frames.")
+
+
+def fallback_passthrough_segment(video_path, audio_path, output_path):
+    """
+    Fallback when no face is detected: Mux original video with aligned audio and exit.
+    Also removes any temp files for this segment.
+    """
+    print("[WARN] No face detected — falling back to original video with new audio.")
+
+    # Ensure output directory exists
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    # Mux original video with new audio
+    command = [
+        "ffmpeg",
+        "-y",
+        "-i", video_path,
+        "-i", audio_path,
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-map", "0:v:0",
+        "-map", "1:a:0",
+        "-shortest",
+        output_path
+    ]
+    try:
+        subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print(f"[INFO] Fallback output written to {output_path}")
+    except subprocess.CalledProcessError as e:
+        print("[ERROR] Fallback muxing failed!")
+        print("STDERR:\n", e.stderr.decode())
+        raise
+
+    # Clean up any temp files
+    if os.path.exists("temp/temp.wav"):
+        os.remove("temp/temp.wav")
+    if os.path.exists("temp/temp.mp4"):
+        os.remove("temp/temp.mp4")
+    if os.path.exists("hq_temp"):
+        shutil.rmtree("hq_temp")
+
     
 def estimate_yaw_pitch(kps):
     # Assume kps = np.array with shape (5, 2), typical from RetinaFace
