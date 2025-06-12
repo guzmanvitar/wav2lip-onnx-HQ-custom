@@ -284,28 +284,33 @@ def fallback_passthrough_segment(video_path, audio_path, output_path):
     # Ensure output directory exists
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
+    # Define common FFmpeg flags (must match the rest of your pipeline)
+    common_ffmpeg_flags = [
+        "-shortest",
+        "-vcodec", "libx264",
+        "-pix_fmt", "yuv420p",
+        "-crf", "23",
+        "-preset", "veryfast",
+        "-acodec", "aac",
+        "-ac", "2",
+        "-ar", "44100",
+        "-b:a", "128k",
+    ]
+
     # Mux original video with new audio
     command = [
         "ffmpeg",
         "-y",
-        "-i",
-        video_path,
-        "-i",
-        audio_path,
-        "-c:v",
-        "copy",
-        "-c:a",
-        "aac",
-        "-map",
-        "0:v:0",
-        "-map",
-        "1:a:0",
-        "-shortest",
-        output_path,
-    ]
+        "-i", video_path,
+        "-i", audio_path,
+    ] + common_ffmpeg_flags + [output_path]
+
     try:
         subprocess.run(
-            command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            command,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
         print(f"[INFO] Fallback output written to {output_path}")
     except subprocess.CalledProcessError as e:
@@ -314,10 +319,10 @@ def fallback_passthrough_segment(video_path, audio_path, output_path):
         raise
 
     # Clean up any temp files
-    if os.path.exists("temp/temp.wav"):
-        os.remove("temp/temp.wav")
-    if os.path.exists("temp/temp.mp4"):
-        os.remove("temp/temp.mp4")
+    for temp_file in ["temp/temp.wav", "temp/temp.mp4"]:
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+
     if os.path.exists("hq_temp"):
         shutil.rmtree("hq_temp")
 
@@ -512,7 +517,7 @@ def main():
         except ValueError:
             fallback_passthrough_segment(args.face, args.audio, args.outfile)
             sys.exit(0)
-    
+
     # Process video input
     else:
         video_stream = cv2.VideoCapture(args.face)
@@ -551,7 +556,9 @@ def main():
                 roi = (0, 0, w, h)
                 cropped_roi = frame[roi[1] : roi[1] + roi[3], roi[0] : roi[0] + roi[2]]
                 try:
-                    target_id = select_specific_face(detector, cropped_roi, 256, crop_scale=1)
+                    target_id = select_specific_face(
+                        detector, cropped_roi, 256, crop_scale=1
+                    )
                 except ValueError:
                     fallback_passthrough_segment(args.face, args.audio, args.outfile)
                     sys.exit(0)
@@ -802,62 +809,57 @@ def main():
     out.release()
 
     # Build ffmpeg command for final output
+    # Ensure uniform encoding for all segments
+    common_ffmpeg_flags = [
+        "-shortest",
+        "-vcodec",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-crf",
+        "23",
+        "-preset",
+        "veryfast",
+        "-acodec",
+        "aac",
+        "-ac",
+        "2",
+        "-ar",
+        "44100",
+        "-b:a",
+        "128k",
+    ]
+
     if args.hq_output:
-        command = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            args.audio,
-            "-r",
-            str(fps),
-            "-f",
-            "image2",
-            "-i",
-            "./hq_temp/%07d.png",
-            "-shortest",
-            "-vcodec",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            "-crf",
-            "5",
-            "-preset",
-            "slow",
-            "-acodec",
-            "libmp3lame",
-            "-ac",
-            "2",
-            "-ar",
-            "44100",
-            "-ab",
-            "128000",
-            "-strict",
-            "-2",
-            args.outfile,
-        ]
+        command = (
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                args.audio,
+                "-r",
+                str(fps),
+                "-f",
+                "image2",
+                "-i",
+                "./hq_temp/%07d.png",
+            ]
+            + common_ffmpeg_flags
+            + [args.outfile]
+        )
     else:
-        command = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            args.audio,
-            "-i",
-            "temp/temp.mp4",
-            "-shortest",
-            "-vcodec",
-            "copy",
-            "-acodec",
-            "libmp3lame",
-            "-ac",
-            "2",
-            "-ar",
-            "44100",
-            "-ab",
-            "128000",
-            "-strict",
-            "-2",
-            args.outfile,
-        ]
+        command = (
+            [
+                "ffmpeg",
+                "-y",
+                "-i",
+                args.audio,
+                "-i",
+                "temp/temp.mp4",
+            ]
+            + common_ffmpeg_flags
+            + [args.outfile]
+        )
 
     # Execute ffmpeg command
     try:
