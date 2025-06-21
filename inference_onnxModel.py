@@ -494,6 +494,7 @@ def main():
         orig_frame = cv2.resize(
             orig_frame,
             (
+
                 orig_frame.shape[1] // args.resize_factor,
                 orig_frame.shape[0] // args.resize_factor,
             ),
@@ -509,7 +510,7 @@ def main():
 
         try:
             target_id = select_specific_face(detector, cropped_roi, 256, crop_scale=1)
-        except ValueError:
+        except (ValueError, AssertionError):
             fallback_passthrough_segment(args.face, args.audio, args.outfile)
             sys.exit(0)
 
@@ -550,9 +551,13 @@ def main():
                 h, w = frame.shape[:-1]
                 roi = (0, 0, w, h)
                 cropped_roi = frame[roi[1] : roi[1] + roi[3], roi[0] : roi[0] + roi[2]]
-                target_id = select_specific_face(
-                    detector, cropped_roi, 256, crop_scale=1
-                )
+                try:
+                    target_id = select_specific_face(
+                        detector, cropped_roi, 256, crop_scale=1
+                    )
+                except (ValueError, AssertionError):
+                    fallback_passthrough_segment(args.face, args.audio, args.outfile)
+                    sys.exit(0)
                 orig_h, orig_w = cropped_roi.shape[:-1]
                 print("Reading frames....")
 
