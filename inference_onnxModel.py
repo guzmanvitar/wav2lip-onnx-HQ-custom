@@ -494,7 +494,6 @@ def main():
         orig_frame = cv2.resize(
             orig_frame,
             (
-
                 orig_frame.shape[1] // args.resize_factor,
                 orig_frame.shape[0] // args.resize_factor,
             ),
