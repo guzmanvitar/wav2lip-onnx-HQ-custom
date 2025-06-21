@@ -1,24 +1,25 @@
-import os
-import subprocess
-import numpy as np
-import cv2
 import argparse
-import audio
-import shutil
-import librosa
-from tqdm import tqdm
-from scipy.io.wavfile import write
 import gc
+import os
+import shutil
+import subprocess
 import sys
 
+import cv2
+import librosa
+import numpy as np
 import onnxruntime
+from scipy.io.wavfile import write
+from tqdm import tqdm
+
+import audio
+from faceID.faceID import FaceRecognition
+from utils.face_alignment import get_cropped_head_256
+from utils.retinaface import RetinaFace
 
 onnxruntime.set_default_logger_severity(3)
 
 # face detection and alignment
-from utils.retinaface import RetinaFace
-from utils.face_alignment import get_cropped_head_256
-
 detector = RetinaFace(
     "utils/scrfd_2.5g_bnkps.onnx",
     provider=[
@@ -29,10 +30,7 @@ detector = RetinaFace(
 )
 
 # specific face selector
-from faceID.faceID import FaceRecognition
-
 recognition = FaceRecognition("faceID/recognition.onnx")
-
 
 # arguments
 parser = argparse.ArgumentParser(
@@ -99,7 +97,10 @@ parser.add_argument(
     "--resize_factor",
     default=1,
     type=int,
-    help="Reduce the resolution by this factor. Sometimes, best results are obtained at 480p or 720p",
+    help=(
+        "Reduce the resolution by this factor. "
+        "Sometimes, best results are obtained at 480p or 720p"
+    ),
 )
 
 parser.add_argument(
@@ -122,9 +123,7 @@ parser.add_argument(
 parser.add_argument("--frame_enhancer", action="store_true", help="Use frame enhancer")
 
 parser.add_argument("--face_mask", action="store_true", help="Use face mask")
-parser.add_argument(
-    "--face_occluder", action="store_true", help="Use x-seg occluder face mask"
-)
+parser.add_argument("--face_occluder", action="store_true", help="Use x-seg occluder face mask")
 
 parser.add_argument(
     "--pads",
@@ -146,8 +145,8 @@ parser.add_argument(
 args = parser.parse_args()
 
 if (
-    args.checkpoint_path == "checkpoints\wav2lip_384.onnx"
-    or args.checkpoint_path == "checkpoints\wav2lip_384_fp16.onnx"
+    args.checkpoint_path == r"checkpoints\wav2lip_384.onnx"
+    or args.checkpoint_path == r"checkpoints\wav2lip_384_fp16.onnx"
 ):
     args.img_size = 384
 else:
@@ -172,9 +171,7 @@ if args.enhancer == "gpen":
 if args.enhancer == "codeformer":
     from enhancers.Codeformer.Codeformer import CodeFormer
 
-    enhancer = CodeFormer(
-        model_path="enhancers/Codeformer/codeformerfixed.onnx", device=device
-    )
+    enhancer = CodeFormer(model_path="enhancers/Codeformer/codeformerfixed.onnx", device=device)
 
 if args.enhancer == "restoreformer":
     from enhancers.restoreformer.restoreformer16 import RestoreFormer
@@ -208,9 +205,7 @@ if args.face_occluder:
 if args.denoise:
     from resemble_denoiser.resemble_denoiser import ResembleDenoiser
 
-    denoiser = ResembleDenoiser(
-        model_path="resemble_denoiser/denoiser.onnx", device=device
-    )
+    denoiser = ResembleDenoiser(model_path="resemble_denoiser/denoiser.onnx", device=device)
 
 if os.path.isfile(args.face) and args.face.split(".")[1] in ["jpg", "png", "jpeg"]:
     args.static: args.static = True
@@ -219,9 +214,7 @@ if os.path.isfile(args.face) and args.face.split(".")[1] in ["jpg", "png", "jpeg
 def load_model(device):
     model_path = args.checkpoint_path
     session_options = onnxruntime.SessionOptions()
-    session_options.graph_optimization_level = (
-        onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-    )
+    session_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
     providers = ["CPUExecutionProvider"]
     if device == "cuda":
         providers = [
@@ -246,9 +239,7 @@ def select_specific_face(model, spec_img, size, crop_scale=1.0):
     bboxes, kpss = model.detect(cropped_roi, input_size=(320, 320), det_thresh=0.3)
     assert len(kpss) != 0, "No face detected"
 
-    target_face, mat = get_cropped_head_256(
-        cropped_roi, kpss[0], size=size, scale=crop_scale
-    )
+    target_face, mat = get_cropped_head_256(cropped_roi, kpss[0], size=size, scale=crop_scale)
     target_face = cv2.resize(target_face, (112, 112))
     target_id = recognition(target_face)[0].flatten()
 
@@ -304,8 +295,7 @@ def fallback_passthrough_segment(video_path, audio_path, output_path):
         subprocess.run(
             command,
             check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
         )
         print(f"[INFO] Fallback output written to {output_path}")
     except subprocess.CalledProcessError as e:
@@ -398,7 +388,7 @@ def face_detect(images, target_id):
             matrix.append(M)
             face_error.append(0)
 
-        except:
+        except Exception:
             # fallback: use empty face, and mark as no-face
             crop_face = np.zeros((256, 256), dtype=np.uint8)
             crop_face = cv2.cvtColor(crop_face, cv2.COLOR_GRAY2RGB) / 255
@@ -455,7 +445,6 @@ def main():
         os.mkdir("hq_temp")
 
     # HQ processing config
-    preset = "medium"
     blend = args.blending / 10
 
     # Create static face mask
@@ -463,24 +452,16 @@ def main():
     static_face_mask = cv2.ellipse(
         static_face_mask, (112, 162), (62, 54), 0, 0, 360, (255, 255, 255), -1
     )
-    static_face_mask = cv2.ellipse(
-        static_face_mask, (112, 122), (46, 23), 0, 0, 360, (0, 0, 0), -1
-    )
+    static_face_mask = cv2.ellipse(static_face_mask, (112, 122), (46, 23), 0, 0, 360, (0, 0, 0), -1)
     static_face_mask = cv2.resize(static_face_mask, (256, 256))
-    static_face_mask = cv2.rectangle(
-        static_face_mask, (0, 246), (246, 246), (0, 0, 0), -1
-    )
+    static_face_mask = cv2.rectangle(static_face_mask, (0, 246), (246, 246), (0, 0, 0), -1)
     static_face_mask = cv2.cvtColor(static_face_mask, cv2.COLOR_GRAY2RGB) / 255
     static_face_mask = cv2.GaussianBlur(static_face_mask, (19, 19), cv2.BORDER_DEFAULT)
 
     # Create sub face mask
     sub_face_mask = np.zeros((256, 256), dtype=np.uint8)
-    sub_face_mask = cv2.rectangle(
-        sub_face_mask, (42, 65 - padY), (214, 249), (255, 255, 255), -1
-    )
-    sub_face_mask = cv2.GaussianBlur(
-        sub_face_mask.astype(np.uint8), (29, 29), cv2.BORDER_DEFAULT
-    )
+    sub_face_mask = cv2.rectangle(sub_face_mask, (42, 65 - padY), (214, 249), (255, 255, 255), -1)
+    sub_face_mask = cv2.GaussianBlur(sub_face_mask.astype(np.uint8), (29, 29), cv2.BORDER_DEFAULT)
     sub_face_mask = cv2.cvtColor(sub_face_mask, cv2.COLOR_GRAY2RGB)
     sub_face_mask = sub_face_mask / 255
 
@@ -531,7 +512,7 @@ def main():
         full_frames = []
         orig_frames = []
 
-        for l in range(new_duration):
+        for frame_idx in range(new_duration):
             still_reading, frame = video_stream.read()
             if not still_reading:
                 video_stream.release()
@@ -546,21 +527,19 @@ def main():
                     ),
                 )
 
-            if l == 0:
+            if frame_idx == 0:
                 h, w = frame.shape[:-1]
                 roi = (0, 0, w, h)
                 cropped_roi = frame[roi[1] : roi[1] + roi[3], roi[0] : roi[0] + roi[2]]
                 try:
-                    target_id = select_specific_face(
-                        detector, cropped_roi, 256, crop_scale=1
-                    )
+                    target_id = select_specific_face(detector, cropped_roi, 256, crop_scale=1)
                 except (ValueError, AssertionError):
                     fallback_passthrough_segment(args.face, args.audio, args.outfile)
                     sys.exit(0)
                 orig_h, orig_w = cropped_roi.shape[:-1]
                 print("Reading frames....")
 
-            print(f"\r{l}", end=" ", flush=True)
+            print(f"\r{frame_idx}", end=" ", flush=True)
 
             cropped_roi = frame[
                 int(roi[1]) : int(roi[1] + roi[3]), int(roi[0]) : int(roi[0] + roi[2])
@@ -571,9 +550,7 @@ def main():
     # Report memory usage of loaded frames
     memory_usage_bytes = sum(frame.nbytes for frame in full_frames)
     memory_usage_mb = memory_usage_bytes / (1024**2)
-    print(
-        f"Number of frames used for inference: {len(full_frames)} (~{int(memory_usage_mb)} MB)"
-    )
+    print(f"Number of frames used for inference: {len(full_frames)} (~{int(memory_usage_mb)} MB)")
 
     # Convert input audio to mono WAV format
     print("Extracting raw audio...")
@@ -612,7 +589,8 @@ def main():
 
     if np.isnan(mel.reshape(-1)).sum() > 0:
         raise ValueError(
-            "Mel contains NaNs! Using a TTS voice? Add a small epsilon noise to the wav file and try again."
+            "Mel contains NaNs! Using a TTS voice? "
+            "Add a small epsilon noise to the wav file and try again."
         )
 
     # Slice mel into chunks for inference
@@ -652,9 +630,7 @@ def main():
     model = load_model(device)
 
     frame_h, frame_w = full_frames[0].shape[:2]
-    out = cv2.VideoWriter(
-        "temp/temp.mp4", cv2.VideoWriter_fourcc(*"mp4v"), fps, (orig_w, orig_h)
-    )
+    out = cv2.VideoWriter("temp/temp.mp4", cv2.VideoWriter_fourcc(*"mp4v"), fps, (orig_w, orig_h))
 
     os.system("cls")
     print(f"Running on {onnxruntime.get_device()}")
@@ -686,9 +662,7 @@ def main():
         mel_batch = mel_batch.transpose((0, 3, 1, 2)).astype(np.float32)
 
         # ONNX inference
-        pred = model.run(
-            None, {"mel_spectrogram": mel_batch, "video_frames": img_batch}
-        )[0][0]
+        pred = model.run(None, {"mel_spectrogram": mel_batch, "video_frames": img_batch})[0][0]
 
         pred = (
             (pred.transpose(1, 2, 0) * 255)
@@ -703,103 +677,124 @@ def main():
         full_frame = full_frames[fc]
         final = orig_frames[fc]
 
-        for p, f in zip(pred, frames):
-            if not args.static:
-                fc += 1
+        for frame_idx in range(new_duration):
+            if fc == len(full_frames):
+                fc = 0
 
-            # Resize prediction to match face mode
-            target_size = (132, 176) if args.face_mode == 0 else (172, 176)
-            p = cv2.resize(p, target_size)
+            face_err = no_face[fc]
 
-            # Insert prediction into aligned face
-            y1, y2 = 65 - padY, 241 - padY
-            x1, x2 = (62, 194) if args.face_mode == 0 else (42, 214)
-            aligned_face[y1:y2, x1:x2] = p
+            img_batch = img_batch.transpose((0, 3, 1, 2)).astype(np.float32)
+            mel_batch = mel_batch.transpose((0, 3, 1, 2)).astype(np.float32)
 
-            # Blend prediction into original aligned face using mask
-            aligned_face = (
-                sub_face_mask * aligned_face + (1 - sub_face_mask) * aligned_face_orig
-            ).astype(np.uint8)
+            # ONNX inference
+            pred = model.run(None, {"mel_spectrogram": mel_batch, "video_frames": img_batch})[0][0]
 
-            # Handle fallback for failed face detection
-            if face_err != 0:
-                res = full_frame
-                face_err = 0
-            else:
-                # Apply enhancer
-                if args.enhancer != "none":
-                    enhanced = enhancer.enhance(aligned_face)
-                    enhanced = cv2.resize(enhanced, (256, 256))
-                    aligned_face = cv2.addWeighted(
-                        enhanced.astype(np.float32),
-                        blend,
-                        aligned_face.astype(np.float32),
-                        1.0 - blend,
-                        0.0,
-                    )
+            pred = (
+                (pred.transpose(1, 2, 0) * 255)
+                .astype(np.uint8)
+                .reshape((1, args.img_size, args.img_size, 3))
+            )
 
-                # Generate appropriate face mask
-                if args.face_mask:
-                    seg_mask = masker.mask(aligned_face)
-                    seg_mask = cv2.blur(seg_mask, (5, 5)) / 255.0
-                    mask = cv2.warpAffine(seg_mask, mat_rev, (frame_w, frame_h))
+            mat = matrix[fc]
+            mat_rev = cv2.invertAffineTransform(mat)
+            aligned_face = aligned_faces[fc].copy()
+            aligned_face_orig = aligned_faces[fc].copy()
+            full_frame = full_frames[fc]
+            final = orig_frames[fc]
 
-                elif args.face_occluder:
-                    try:
-                        seg_mask = occluder.mask(aligned_face_orig)
-                    except:
-                        seg_mask = occluder.mask(aligned_face)
-                    seg_mask = cv2.cvtColor(seg_mask, cv2.COLOR_GRAY2RGB)
-                    mask = cv2.warpAffine(seg_mask, mat_rev, (frame_w, frame_h))
+            for p, f in zip(pred, frames):
+                if not args.static:
+                    fc += 1
 
+                # Resize prediction to match face mode
+                target_size = (132, 176) if args.face_mode == 0 else (172, 176)
+                p = cv2.resize(p, target_size)
+
+                # Insert prediction into aligned face
+                y1, y2 = 65 - padY, 241 - padY
+                x1, x2 = (62, 194) if args.face_mode == 0 else (42, 214)
+                aligned_face[y1:y2, x1:x2] = p
+
+                # Blend prediction into original aligned face using mask
+                aligned_face = (
+                    sub_face_mask * aligned_face + (1 - sub_face_mask) * aligned_face_orig
+                ).astype(np.uint8)
+
+                # Handle fallback for failed face detection
+                if face_err != 0:
+                    res = full_frame
+                    face_err = 0
                 else:
-                    mask = cv2.warpAffine(static_face_mask, mat_rev, (frame_w, frame_h))
+                    # Apply enhancer
+                    if args.enhancer != "none":
+                        enhanced = enhancer.enhance(aligned_face)
+                        enhanced = cv2.resize(enhanced, (256, 256))
+                        aligned_face = cv2.addWeighted(
+                            enhanced.astype(np.float32),
+                            blend,
+                            aligned_face.astype(np.float32),
+                            1.0 - blend,
+                            0.0,
+                        )
 
-                # Optional sharpening
-                if args.sharpen:
-                    aligned_face = cv2.detailEnhance(
-                        aligned_face, sigma_s=1.3, sigma_r=0.15
-                    )
+                    # Generate appropriate face mask
+                    if args.face_mask:
+                        seg_mask = masker.mask(aligned_face)
+                        seg_mask = cv2.blur(seg_mask, (5, 5)) / 255.0
+                        mask = cv2.warpAffine(seg_mask, mat_rev, (frame_w, frame_h))
 
-                # De-align prediction and blend with full frame
-                dealigned_face = cv2.warpAffine(
-                    aligned_face, mat_rev, (frame_w, frame_h)
-                )
-                res = (mask * dealigned_face + (1 - mask) * full_frame).astype(np.uint8)
+                    elif args.face_occluder:
+                        try:
+                            seg_mask = occluder.mask(aligned_face_orig)
+                        except Exception:
+                            seg_mask = occluder.mask(aligned_face)
+                        seg_mask = cv2.cvtColor(seg_mask, cv2.COLOR_GRAY2RGB)
+                        mask = cv2.warpAffine(seg_mask, mat_rev, (frame_w, frame_h))
 
-            final = res
+                    else:
+                        mask = cv2.warpAffine(static_face_mask, mat_rev, (frame_w, frame_h))
 
-        # Optional frame enhancement and resizing
-        if args.frame_enhancer:
-            final = frame_enhancer.enhance(final)
-            final = cv2.resize(final, (orig_w, orig_h), interpolation=cv2.INTER_AREA)
+                    # Optional sharpening
+                    if args.sharpen:
+                        aligned_face = cv2.detailEnhance(aligned_face, sigma_s=1.3, sigma_r=0.15)
 
-        # Apply fade in/out effects
-        if args.fade:
-            if i < fade_in:
-                final = cv2.convertScaleAbs(final, alpha=0.1 * bright_in, beta=0)
-                bright_in += 1
-            elif i > fade_out:
-                final = cv2.convertScaleAbs(final, alpha=1 - 0.1 * bright_out, beta=0)
-                bright_out += 1
+                    # De-align prediction and blend with full frame
+                    dealigned_face = cv2.warpAffine(aligned_face, mat_rev, (frame_w, frame_h))
+                    res = (mask * dealigned_face + (1 - mask) * full_frame).astype(np.uint8)
 
-        # Save output
-        if args.hq_output:
-            cv2.imwrite(os.path.join("hq_temp", f"{i:07d}.png"), final)
-        else:
-            out.write(final)
+                final = res
 
-        # Optional real-time preview
-        if args.preview:
-            cv2.imshow("Result - press ESC to stop and save", final)
-            k = cv2.waitKey(1)
-            if k == 27:
-                cv2.destroyAllWindows()
-                out.release()
-                break
-            elif k == ord("s"):
-                args.sharpen = not args.sharpen
-                print(f"\nSharpen = {args.sharpen}")
+            # Optional frame enhancement and resizing
+            if args.frame_enhancer:
+                final = frame_enhancer.enhance(final)
+                final = cv2.resize(final, (orig_w, orig_h), interpolation=cv2.INTER_AREA)
+
+            # Apply fade in/out effects
+            if args.fade:
+                if frame_idx < fade_in:
+                    final = cv2.convertScaleAbs(final, alpha=0.1 * bright_in, beta=0)
+                    bright_in += 1
+                elif frame_idx > fade_out:
+                    final = cv2.convertScaleAbs(final, alpha=1 - 0.1 * bright_out, beta=0)
+                    bright_out += 1
+
+            # Save output
+            if args.hq_output:
+                cv2.imwrite(os.path.join("hq_temp", f"{i:07d}.png"), final)
+            else:
+                out.write(final)
+
+            # Optional real-time preview
+            if args.preview:
+                cv2.imshow("Result - press ESC to stop and save", final)
+                k = cv2.waitKey(1)
+                if k == 27:
+                    cv2.destroyAllWindows()
+                    out.release()
+                    break
+                elif k == ord("s"):
+                    args.sharpen = not args.sharpen
+                    print(f"\nSharpen = {args.sharpen}")
 
     out.release()
 
@@ -860,9 +855,7 @@ def main():
     try:
         print("Running ffmpeg command:")
         print(" ".join(command))
-        result = subprocess.run(
-            command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-        )
+        subprocess.run(command, check=True, capture_output=True)
         print("ffmpeg completed successfully.")
     except subprocess.CalledProcessError as e:
         print("ffmpeg failed:")
