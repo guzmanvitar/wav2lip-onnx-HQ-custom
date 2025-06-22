@@ -677,124 +677,99 @@ def main():
         full_frame = full_frames[fc]
         final = orig_frames[fc]
 
-        for frame_idx in range(new_duration):
-            if fc == len(full_frames):
-                fc = 0
+        for p, f in zip(pred, frames):
+            if not args.static:
+                fc += 1
 
-            face_err = no_face[fc]
+            # Resize prediction to match face mode
+            target_size = (132, 176) if args.face_mode == 0 else (172, 176)
+            p = cv2.resize(p, target_size)
 
-            img_batch = img_batch.transpose((0, 3, 1, 2)).astype(np.float32)
-            mel_batch = mel_batch.transpose((0, 3, 1, 2)).astype(np.float32)
+            # Insert prediction into aligned face
+            y1, y2 = 65 - padY, 241 - padY
+            x1, x2 = (62, 194) if args.face_mode == 0 else (42, 214)
+            aligned_face[y1:y2, x1:x2] = p
 
-            # ONNX inference
-            pred = model.run(None, {"mel_spectrogram": mel_batch, "video_frames": img_batch})[0][0]
+            # Blend prediction into original aligned face using mask
+            aligned_face = (
+                sub_face_mask * aligned_face + (1 - sub_face_mask) * aligned_face_orig
+            ).astype(np.uint8)
 
-            pred = (
-                (pred.transpose(1, 2, 0) * 255)
-                .astype(np.uint8)
-                .reshape((1, args.img_size, args.img_size, 3))
-            )
-
-            mat = matrix[fc]
-            mat_rev = cv2.invertAffineTransform(mat)
-            aligned_face = aligned_faces[fc].copy()
-            aligned_face_orig = aligned_faces[fc].copy()
-            full_frame = full_frames[fc]
-            final = orig_frames[fc]
-
-            for p, f in zip(pred, frames):
-                if not args.static:
-                    fc += 1
-
-                # Resize prediction to match face mode
-                target_size = (132, 176) if args.face_mode == 0 else (172, 176)
-                p = cv2.resize(p, target_size)
-
-                # Insert prediction into aligned face
-                y1, y2 = 65 - padY, 241 - padY
-                x1, x2 = (62, 194) if args.face_mode == 0 else (42, 214)
-                aligned_face[y1:y2, x1:x2] = p
-
-                # Blend prediction into original aligned face using mask
-                aligned_face = (
-                    sub_face_mask * aligned_face + (1 - sub_face_mask) * aligned_face_orig
-                ).astype(np.uint8)
-
-                # Handle fallback for failed face detection
-                if face_err != 0:
-                    res = full_frame
-                    face_err = 0
-                else:
-                    # Apply enhancer
-                    if args.enhancer != "none":
-                        enhanced = enhancer.enhance(aligned_face)
-                        enhanced = cv2.resize(enhanced, (256, 256))
-                        aligned_face = cv2.addWeighted(
-                            enhanced.astype(np.float32),
-                            blend,
-                            aligned_face.astype(np.float32),
-                            1.0 - blend,
-                            0.0,
-                        )
-
-                    # Generate appropriate face mask
-                    if args.face_mask:
-                        seg_mask = masker.mask(aligned_face)
-                        seg_mask = cv2.blur(seg_mask, (5, 5)) / 255.0
-                        mask = cv2.warpAffine(seg_mask, mat_rev, (frame_w, frame_h))
-
-                    elif args.face_occluder:
-                        try:
-                            seg_mask = occluder.mask(aligned_face_orig)
-                        except Exception:
-                            seg_mask = occluder.mask(aligned_face)
-                        seg_mask = cv2.cvtColor(seg_mask, cv2.COLOR_GRAY2RGB)
-                        mask = cv2.warpAffine(seg_mask, mat_rev, (frame_w, frame_h))
-
-                    else:
-                        mask = cv2.warpAffine(static_face_mask, mat_rev, (frame_w, frame_h))
-
-                    # Optional sharpening
-                    if args.sharpen:
-                        aligned_face = cv2.detailEnhance(aligned_face, sigma_s=1.3, sigma_r=0.15)
-
-                    # De-align prediction and blend with full frame
-                    dealigned_face = cv2.warpAffine(aligned_face, mat_rev, (frame_w, frame_h))
-                    res = (mask * dealigned_face + (1 - mask) * full_frame).astype(np.uint8)
-
-                final = res
-
-            # Optional frame enhancement and resizing
-            if args.frame_enhancer:
-                final = frame_enhancer.enhance(final)
-                final = cv2.resize(final, (orig_w, orig_h), interpolation=cv2.INTER_AREA)
-
-            # Apply fade in/out effects
-            if args.fade:
-                if frame_idx < fade_in:
-                    final = cv2.convertScaleAbs(final, alpha=0.1 * bright_in, beta=0)
-                    bright_in += 1
-                elif frame_idx > fade_out:
-                    final = cv2.convertScaleAbs(final, alpha=1 - 0.1 * bright_out, beta=0)
-                    bright_out += 1
-
-            # Save output
-            if args.hq_output:
-                cv2.imwrite(os.path.join("hq_temp", f"{i:07d}.png"), final)
+            # Handle fallback for failed face detection
+            if face_err != 0:
+                res = full_frame
+                face_err = 0
             else:
-                out.write(final)
+                # Apply enhancer
+                if args.enhancer != "none":
+                    enhanced = enhancer.enhance(aligned_face)
+                    enhanced = cv2.resize(enhanced, (256, 256))
+                    aligned_face = cv2.addWeighted(
+                        enhanced.astype(np.float32),
+                        blend,
+                        aligned_face.astype(np.float32),
+                        1.0 - blend,
+                        0.0,
+                    )
 
-            # Optional real-time preview
-            if args.preview:
-                cv2.imshow("Result - press ESC to stop and save", final)
-                k = cv2.waitKey(1)
-                if k == 27:
-                    cv2.destroyAllWindows()
-                    out.release()
-                    break
-                elif k == ord("s"):
-                    args.sharpen = not args.sharpen
-                    print(f"\nSharpen = {args.sharpen}")
+                # Generate appropriate face mask
+                if args.face_mask:
+                    seg_mask = masker.mask(aligned_face)
+                    seg_mask = cv2.blur(seg_mask, (5, 5)) / 255.0
+                    mask = cv2.warpAffine(seg_mask, mat_rev, (frame_w, frame_h))
+
+                elif args.face_occluder:
+                    try:
+                        seg_mask = occluder.mask(aligned_face_orig)
+                    except Exception:
+                        seg_mask = occluder.mask(aligned_face)
+                    seg_mask = cv2.cvtColor(seg_mask, cv2.COLOR_GRAY2RGB)
+                    mask = cv2.warpAffine(seg_mask, mat_rev, (frame_w, frame_h))
+
+                else:
+                    mask = cv2.warpAffine(static_face_mask, mat_rev, (frame_w, frame_h))
+
+                # Optional sharpening
+                if args.sharpen:
+                    aligned_face = cv2.detailEnhance(aligned_face, sigma_s=1.3, sigma_r=0.15)
+
+                # De-align prediction and blend with full frame
+                dealigned_face = cv2.warpAffine(aligned_face, mat_rev, (frame_w, frame_h))
+                res = (mask * dealigned_face + (1 - mask) * full_frame).astype(np.uint8)
+
+            final = res
+
+        # Optional frame enhancement and resizing
+        if args.frame_enhancer:
+            final = frame_enhancer.enhance(final)
+            final = cv2.resize(final, (orig_w, orig_h), interpolation=cv2.INTER_AREA)
+
+        # Apply fade in/out effects
+        if args.fade:
+            if i < fade_in:
+                final = cv2.convertScaleAbs(final, alpha=0.1 * bright_in, beta=0)
+                bright_in += 1
+            elif i > fade_out:
+                final = cv2.convertScaleAbs(final, alpha=1 - 0.1 * bright_out, beta=0)
+                bright_out += 1
+
+        # Save output
+        if args.hq_output:
+            cv2.imwrite(os.path.join("hq_temp", f"{i:07d}.png"), final)
+        else:
+            out.write(final)
+
+        # Optional real-time preview
+        if args.preview:
+            cv2.imshow("Result - press ESC to stop and save", final)
+            k = cv2.waitKey(1)
+            if k == 27:
+                cv2.destroyAllWindows()
+                out.release()
+                break
+            elif k == ord("s"):
+                args.sharpen = not args.sharpen
+                print(f"\nSharpen = {args.sharpen}")
 
     out.release()
 
