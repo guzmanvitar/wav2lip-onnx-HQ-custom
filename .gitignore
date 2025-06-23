@@ -16,6 +16,7 @@ __pycache__
 *.vscode
 *.idea
 temp
+Temp
 hq_temp
 # Environment variables
 .env
@@ -36,3 +37,4 @@ hq_temp
 # Distribution / packaging
 dist/
 build/
+

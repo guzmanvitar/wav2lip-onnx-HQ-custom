@@ -39,8 +39,7 @@ class FaceDetection:
         if self.session is None:
             assert onnx_path is not None
             assert os.path.exists(onnx_path)
-            self.session = InferenceSession(onnx_path,
-                                            providers=['CUDAExecutionProvider'])
+            self.session = InferenceSession(onnx_path, providers=["CUDAExecutionProvider"])
         self.nms_thresh = 0.4
         self.center_cache = {}
         input_cfg = self.session.get_inputs()[0]
@@ -84,10 +83,7 @@ class FaceDetection:
         bboxes_list = []
         points_list = []
         input_size = tuple(x.shape[0:2][::-1])
-        blob = cv2.dnn.blobFromImage(x,
-                                     1.0 / 128,
-                                     input_size,
-                                     (127.5, 127.5, 127.5), swapRB=True)
+        blob = cv2.dnn.blobFromImage(x, 1.0 / 128, input_size, (127.5, 127.5, 127.5), swapRB=True)
         net_outs = self.session.run(self.output_names, {self.input_name: blob})
 
         input_height = blob.shape[2]
@@ -135,7 +131,7 @@ class FaceDetection:
                 points_list.append(points[pos_indices])
         return scores_list, bboxes_list, points_list
 
-    def __call__(self, img, score_thresh=0.5, input_size=None, max_num=0, metric='default'):
+    def __call__(self, img, score_thresh=0.5, input_size=None, max_num=0, metric="default"):
         assert input_size is not None or self.input_size is not None
         input_size = self.input_size if input_size is None else input_size
 
@@ -172,10 +168,14 @@ class FaceDetection:
         if 0 < max_num < det.shape[0]:
             area = (det[:, 2] - det[:, 0]) * (det[:, 3] - det[:, 1])
             img_center = img.shape[0] // 2, img.shape[1] // 2
-            offsets = numpy.vstack([(det[:, 0] + det[:, 2]) / 2 - img_center[1],
-                                    (det[:, 1] + det[:, 3]) / 2 - img_center[0]])
+            offsets = numpy.vstack(
+                [
+                    (det[:, 0] + det[:, 2]) / 2 - img_center[1],
+                    (det[:, 1] + det[:, 3]) / 2 - img_center[0],
+                ]
+            )
             offset_dist_squared = numpy.sum(numpy.power(offsets, 2.0), 0)
-            if metric == 'max':
+            if metric == "max":
                 values = area
             else:
                 values = area - offset_dist_squared * 2.0  # some extra weight on the centering
@@ -224,13 +224,12 @@ class FaceRecognition:
         if self.session is None:
             assert onnx_path is not None
             assert os.path.exists(onnx_path)
-            self.session = InferenceSession(onnx_path,
-                                            providers=['CUDAExecutionProvider'])
+            self.session = InferenceSession(onnx_path, providers=["CUDAExecutionProvider"])
 
     def __call__(self, x):
-        x = x.astype('float32')
+        x = x.astype("float32")
         x = (x / 255 - 0.5) / 0.5
         x = x.transpose((2, 0, 1))
         x = numpy.expand_dims(x, 0)
-        return self.session.run(None, {'data': x})
-        #return self.session.run(None, {'input.1': x})
+        return self.session.run(None, {"data": x})
+        # return self.session.run(None, {'input.1': x})
