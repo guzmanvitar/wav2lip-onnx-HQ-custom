@@ -1,6 +1,6 @@
 import numpy as np
 import onnxruntime
-from librosa import stft, istft
+from librosa import istft, stft
 
 
 class ResembleDenoiser:
@@ -9,9 +9,7 @@ class ResembleDenoiser:
         self.win_length = self.n_fft = 4 * self.stft_hop_length
 
         session_options = onnxruntime.SessionOptions()
-        session_options.graph_optimization_level = (
-            onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        )
+        session_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
         session_options.inter_op_num_threads = 4
         session_options.intra_op_num_threads = 4
         session_options.log_severity_level = 4
@@ -85,9 +83,7 @@ class ResembleDenoiser:
         if batch_process_chunks:
             res_chunks = self._model_infer(chunks)
         else:
-            res_chunks = np.array([self._model_infer(c[None]) for c in chunks]).squeeze(
-                axis=1
-            )
+            res_chunks = np.array([self._model_infer(c[None]) for c in chunks]).squeeze(axis=1)
 
         res_chunks *= abs_max
         res = np.reshape(res_chunks, (-1))

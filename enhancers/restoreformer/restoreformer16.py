@@ -1,14 +1,12 @@
 import cv2
-import onnxruntime
 import numpy as np
+import onnxruntime
 
 
 class RestoreFormer:
     def __init__(self, model_path="restoreformer.onnx", device="cpu"):
         session_options = onnxruntime.SessionOptions()
-        session_options.graph_optimization_level = (
-            onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        )
+        session_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
         providers = ["CPUExecutionProvider"]
         if device == "cuda":
             providers = [

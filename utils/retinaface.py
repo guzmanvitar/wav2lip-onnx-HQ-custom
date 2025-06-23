@@ -1,16 +1,11 @@
-# -*- coding: utf-8 -*-
 # @Organization  : insightface.ai
 # @Author        : Jia Guo
 # @Time          : 2021-09-18
 # @Function      :
 
-from __future__ import division
-import datetime
+import cv2
 import numpy as np
 import onnxruntime
-import os
-import cv2
-import sys
 
 
 def softmax(z):
@@ -72,9 +67,7 @@ def distance2kps(points, distance, max_shape=None):
 
 
 class RetinaFace:
-    def __init__(
-        self, model_file=None, provider=["CPUExecutionProvider"], session_options=None
-    ):
+    def __init__(self, model_file=None, provider=["CPUExecutionProvider"], session_options=None):
         self.model_file = model_file
         self.session_options = session_options
         if self.session_options is None:
@@ -169,19 +162,19 @@ class RetinaFace:
                 kps_preds = net_outs[idx + fmc * 2] * stride
             height = input_height // stride
             width = input_width // stride
-            K = height * width
+            # K = height * width
             key = (height, width, stride)
             if key in self.center_cache:
                 anchor_centers = self.center_cache[key]
             else:
-                anchor_centers = np.stack(
-                    np.mgrid[:height, :width][::-1], axis=-1
-                ).astype(np.float32)
+                anchor_centers = np.stack(np.mgrid[:height, :width][::-1], axis=-1).astype(
+                    np.float32
+                )
                 anchor_centers = (anchor_centers * stride).reshape((-1, 2))
                 if self._num_anchors > 1:
-                    anchor_centers = np.stack(
-                        [anchor_centers] * self._num_anchors, axis=1
-                    ).reshape((-1, 2))
+                    anchor_centers = np.stack([anchor_centers] * self._num_anchors, axis=1).reshape(
+                        (-1, 2)
+                    )
                 if len(self.center_cache) < 100:
                     self.center_cache[key] = anchor_centers
 
@@ -198,9 +191,7 @@ class RetinaFace:
                 kpss_list.append(pos_kpss)
         return scores_list, bboxes_list, kpss_list
 
-    def detect(
-        self, img, input_size=(640, 640), max_num=0, metric="default", det_thresh=0.5
-    ):
+    def detect(self, img, input_size=(640, 640), max_num=0, metric="default", det_thresh=0.5):
         assert input_size is not None or self.input_size is not None
         input_size = self.input_size if input_size is None else input_size
 
@@ -247,9 +238,7 @@ class RetinaFace:
             if metric == "max":
                 values = area
             else:
-                values = (
-                    area - offset_dist_squared * 2.0
-                )  # some extra weight on the centering
+                values = area - offset_dist_squared * 2.0  # some extra weight on the centering
             bindex = np.argsort(values)[::-1]  # some extra weight on the centering
             bindex = bindex[0:max_num]
             det = det[bindex, :]

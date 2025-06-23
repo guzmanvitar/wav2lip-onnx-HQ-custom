@@ -5,9 +5,7 @@ import onnxruntime
 class BLENDMASK:
     def __init__(self, model_path="blendswap_256.onnx", device="cpu"):
         session_options = onnxruntime.SessionOptions()
-        session_options.graph_optimization_level = (
-            onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        )
+        session_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
         providers = ["CPUExecutionProvider"]
         if device == "cuda":
             providers = [
@@ -26,9 +24,7 @@ class BLENDMASK:
         target_face = target_face / 255.0
         target_face = np.expand_dims(target_face, axis=0).astype(np.float32)
 
-        res = self.session.run(
-            None, {(self.session.get_inputs()[0].name): target_face}
-        )[0]
+        res = self.session.run(None, {(self.session.get_inputs()[0].name): target_face})[0]
 
         res = res.squeeze()
         res = res * 255.0

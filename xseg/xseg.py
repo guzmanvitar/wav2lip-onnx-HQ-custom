@@ -6,9 +6,7 @@ import onnxruntime
 class MASK:
     def __init__(self, model_path="xseg.onnx", device="cpu"):
         session_options = onnxruntime.SessionOptions()
-        session_options.graph_optimization_level = (
-            onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        )
+        session_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
         providers = ["CPUExecutionProvider"]
         if device == "cuda":
             providers = [
@@ -27,8 +25,6 @@ class MASK:
         img = img / 255
         img = np.expand_dims(img, axis=0).astype(np.float32)
 
-        result = self.session.run(None, {(self.session.get_inputs()[0].name): img})[0][
-            0
-        ]
+        result = self.session.run(None, {(self.session.get_inputs()[0].name): img})[0][0]
 
         return result

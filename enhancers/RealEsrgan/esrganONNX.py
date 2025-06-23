@@ -1,16 +1,13 @@
-﻿import cv2
+﻿import numpy as np
 
 # import torch
 import onnxruntime
-import numpy as np
 
 
 class RealESRGAN_ONNX:
     def __init__(self, model_path="RealESRGAN_x2.onnx", device="cuda"):
         session_options = onnxruntime.SessionOptions()
-        session_options.graph_optimization_level = (
-            onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
-        )
+        session_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
         providers = ["CPUExecutionProvider"]
         if device == "cuda":
             providers = [
@@ -29,11 +26,7 @@ class RealESRGAN_ONNX:
         img = img / 255
         img = np.expand_dims(img, axis=0).astype(np.float32)
         #
-        result = self.session.run(None, {(self.session.get_inputs()[0].name): img})[0][
-            0
-        ]
+        result = self.session.run(None, {(self.session.get_inputs()[0].name): img})[0][0]
         #
-        result = (
-            (result.squeeze().transpose((1, 2, 0)) * 255).clip(0, 255).astype(np.uint8)
-        )
+        result = (result.squeeze().transpose((1, 2, 0)) * 255).clip(0, 255).astype(np.uint8)
         return result
