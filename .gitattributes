@@ -10,3 +10,4 @@ src/lipsync/core/audio/models/denoiser_fp16.onnx filter=lfs diff=lfs merge=lfs -
 src/lipsync/core/segmentation/models/xseg.onnx filter=lfs diff=lfs merge=lfs -text
 # Enhancement models
 src/lipsync/core/enhancement/models/GFPGANv1.4.onnx filter=lfs diff=lfs merge=lfs -text
+src/lipsync/core/enhancement/models/clear_reality_x4.onnx filter=lfs diff=lfs merge=lfs -text
