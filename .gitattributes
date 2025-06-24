@@ -1,7 +1,18 @@
-blendmasker/blendmasker.onnx filter=lfs diff=lfs merge=lfs -text
-checkpoints/wav2lip_gan.onnx filter=lfs diff=lfs merge=lfs -text
-checkpoints/wav2lip.onnx filter=lfs diff=lfs merge=lfs -text
-faceID/recognition.onnx filter=lfs diff=lfs merge=lfs -text
-resemble_denoiser/denoiser_fp16.onnx filter=lfs diff=lfs merge=lfs -text
-xseg/xseg.onnx filter=lfs diff=lfs merge=lfs -text
-enhancers/GFPGAN/GFPGANv1.4.onnx filter=lfs diff=lfs merge=lfs -text
+# Wav2Lip models
+src/lipsync/models/wav2lip/models/wav2lip_gan.onnx filter=lfs diff=lfs merge=lfs -text
+src/lipsync/models/wav2lip/models/wav2lip.onnx filter=lfs diff=lfs merge=lfs -text
+
+# Face detection, recognition, alignment, and masking models
+src/lipsync/core/face/models/recognition.onnx filter=lfs diff=lfs merge=lfs -text
+src/lipsync/core/face/models/scrfd_2.5g_bnkps.onnx filter=lfs diff=lfs merge=lfs -text
+src/lipsync/core/face/models/blendmasker.onnx filter=lfs diff=lfs merge=lfs -text
+
+# Audio processing models
+src/lipsync/core/audio/models/denoiser_fp16.onnx filter=lfs diff=lfs merge=lfs -text
+
+# Segmentation models
+src/lipsync/core/segmentation/models/xseg.onnx filter=lfs diff=lfs merge=lfs -text
+
+# Enhancement models
+src/lipsync/core/enhancement/models/GFPGANv1.4.onnx filter=lfs diff=lfs merge=lfs -text
+src/lipsync/core/enhancement/models/clear_reality_x4.onnx filter=lfs diff=lfs merge=lfs -text

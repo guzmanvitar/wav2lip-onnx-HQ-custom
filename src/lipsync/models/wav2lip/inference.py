@@ -12,16 +12,16 @@ import onnxruntime
 from scipy.io.wavfile import write
 from tqdm import tqdm
 
-import audio
-from faceID.faceID import FaceRecognition
-from utils.face_alignment import get_cropped_head_256
-from utils.retinaface import RetinaFace
+from lipsync.core.audio.processing import load_wav, melspectrogram
+from lipsync.core.face.alignment import get_cropped_head_256
+from lipsync.core.face.detection import RetinaFace
+from lipsync.core.face.recognition import FaceRecognition
 
 onnxruntime.set_default_logger_severity(3)
 
 # face detection and alignment
 detector = RetinaFace(
-    "utils/scrfd_2.5g_bnkps.onnx",
+    "src/lipsync/core/face/models/scrfd_2.5g_bnkps.onnx",
     provider=[
         ("CUDAExecutionProvider", {"cudnn_conv_algo_search": "DEFAULT"}),
         "CPUExecutionProvider",
@@ -30,7 +30,7 @@ detector = RetinaFace(
 )
 
 # specific face selector
-recognition = FaceRecognition("faceID/recognition.onnx")
+recognition = FaceRecognition("src/lipsync/core/face/models/recognition.onnx")
 
 # arguments
 parser = argparse.ArgumentParser(
@@ -145,8 +145,8 @@ parser.add_argument(
 args = parser.parse_args()
 
 if (
-    args.checkpoint_path == r"checkpoints\wav2lip_384.onnx"
-    or args.checkpoint_path == r"checkpoints\wav2lip_384_fp16.onnx"
+    args.checkpoint_path == r"src/lipsync/models/wav2lip/models/wav2lip_384.onnx"
+    or args.checkpoint_path == r"src/lipsync/models/wav2lip/models/wav2lip_384_fp16.onnx"
 ):
     args.img_size = 384
 else:
@@ -162,50 +162,56 @@ print("Running on " + device)
 
 
 if args.enhancer == "gpen":
-    from enhancers.GPEN.GPEN import GPEN
+    from lipsync.core.enhancement.gpen import GPEN
 
     enhancer = GPEN(
-        model_path="enhancers/GPEN/GPEN-BFR-256-sim.onnx", device=device
+        model_path="src/lipsync/core/enhancement/models/GPEN-BFR-256-sim.onnx", device=device
     )  # GPEN-BFR-256-sim
 
 if args.enhancer == "codeformer":
-    from enhancers.Codeformer.Codeformer import CodeFormer
+    from lipsync.core.enhancement.codeformer import CodeFormer
 
-    enhancer = CodeFormer(model_path="enhancers/Codeformer/codeformerfixed.onnx", device=device)
+    enhancer = CodeFormer(
+        model_path="src/lipsync/core/enhancement/models/codeformerfixed.onnx", device=device
+    )
 
 if args.enhancer == "restoreformer":
-    from enhancers.restoreformer.restoreformer16 import RestoreFormer
+    from lipsync.core.enhancement.restoreformer import RestoreFormer
 
     enhancer = RestoreFormer(
-        model_path="enhancers/restoreformer/restoreformer16.onnx", device=device
+        model_path="src/lipsync/core/enhancement/models/restoreformer16.onnx", device=device
     )
 
 if args.enhancer == "gfpgan":
-    from enhancers.GFPGAN.GFPGAN import GFPGAN
+    from lipsync.core.enhancement.gfpgan import GFPGAN
 
-    enhancer = GFPGAN(model_path="enhancers/GFPGAN/GFPGANv1.4.onnx", device=device)
+    enhancer = GFPGAN(
+        model_path="src/lipsync/core/enhancement/models/GFPGANv1.4.onnx", device=device
+    )
 
 if args.frame_enhancer:
-    from enhancers.RealEsrgan.esrganONNX import RealESRGAN_ONNX
+    from lipsync.core.enhancement.realesrgan import RealESRGAN_ONNX
 
     frame_enhancer = RealESRGAN_ONNX(
-        model_path="enhancers/RealEsrgan/clear_reality_x4.onnx", device=device
+        model_path="src/lipsync/core/enhancement/models/clear_reality_x4.onnx", device=device
     )
 
 if args.face_mask:
-    from blendmasker.blendmask import BLENDMASK
+    from lipsync.core.face.masking import BLENDMASK
 
-    masker = BLENDMASK(model_path="blendmasker/blendmasker.onnx", device=device)
+    masker = BLENDMASK(model_path="src/lipsync/core/face/models/blendmasker.onnx", device=device)
 
 if args.face_occluder:
-    from xseg.xseg import MASK
+    from lipsync.core.segmentation.xseg import MASK
 
-    occluder = MASK(model_path="xseg/xseg.onnx", device=device)
+    occluder = MASK(model_path="src/lipsync/core/segmentation/models/xseg.onnx", device=device)
 
 if args.denoise:
-    from resemble_denoiser.resemble_denoiser import ResembleDenoiser
+    from lipsync.core.audio.denoising import ResembleDenoiser
 
-    denoiser = ResembleDenoiser(model_path="resemble_denoiser/denoiser.onnx", device=device)
+    denoiser = ResembleDenoiser(
+        model_path="src/lipsync/core/audio/models/denoiser_fp16.onnx", device=device
+    )
 
 if os.path.isfile(args.face) and args.face.split(".")[1] in ["jpg", "png", "jpeg"]:
     args.static: args.static = True
@@ -584,8 +590,8 @@ def main():
             gc.collect()
 
     # Convert audio to mel spectrogram
-    wav = audio.load_wav("temp/temp.wav", 16000)
-    mel = audio.melspectrogram(wav)
+    wav = load_wav("temp/temp.wav", 16000)
+    mel = melspectrogram(wav)
 
     if np.isnan(mel.reshape(-1)).sum() > 0:
         raise ValueError(

@@ -6,7 +6,7 @@ import numpy as np
 from scipy import signal
 from scipy.io import wavfile
 
-from hparams import hparams as hp
+from lipsync.core.hparams import hparams as hp
 
 
 def load_wav(path, sr):
